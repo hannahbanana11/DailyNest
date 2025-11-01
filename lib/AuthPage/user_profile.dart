@@ -1,8 +1,10 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:dailynest/AuthPage/profile_setting.dart';
 import 'package:dailynest/Auth/AuthService.dart';
+import 'package:http/http.dart' as http;
 
 class UserProfileData {
   static Uint8List? avatarBytes;
@@ -27,7 +29,7 @@ class _UserProfileState extends State<UserProfile> {
     _loadUserData();
   }
 
-  void _loadUserData() {
+  void _loadUserData() async {
     final user = authService.value.currentUser;
     if (user != null) {
       setState(() {
@@ -35,6 +37,46 @@ class _UserProfileState extends State<UserProfile> {
         _email = user.email ?? '';
         UserProfileData.username = _username;
       });
+
+      // Load profile data from Firestore
+      final profile = await authService.value.getUserProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          UserProfileData.contactNumber = profile['contactNumber'] ?? '';
+        });
+      }
+
+      // Load profile picture
+      final photoUrl = user.photoURL ?? await authService.value.getProfilePictureUrl();
+      if (photoUrl != null && mounted) {
+        _loadImageFromUrl(photoUrl);
+      }
+    }
+  }
+
+  Future<void> _loadImageFromUrl(String url) async {
+    try {
+      // Check if it's a base64 data URL
+      if (url.startsWith('data:image')) {
+        final base64String = url.split(',').last;
+        final bytes = base64Decode(base64String);
+        if (mounted) {
+          setState(() {
+            UserProfileData.avatarBytes = bytes;
+          });
+        }
+        return;
+      }
+
+      // Otherwise load from HTTP URL
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200 && mounted) {
+        setState(() {
+          UserProfileData.avatarBytes = response.bodyBytes;
+        });
+      }
+    } catch (e) {
+      // Silently fail - image will show default icon
     }
   }
 

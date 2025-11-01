@@ -1,32 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/addjournal.dart';
-import 'package:dailynest/editjournal.dart';
+import 'package:dailynest/Journal/addjournal.dart';
+import 'package:dailynest/Journal/editjournal.dart';
+import 'package:dailynest/database/DiaryFirebase.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Global list to store journal entries
+// Global data class for journal entries (in-memory storage)
 class JournalData {
   static List<Map<String, String>> journalEntries = [];
 
   static void addEntry(String title, String content, String date) {
     journalEntries.insert(0, {
       'title': title,
-      'date': date,
       'content': content,
+      'date': date,
     });
-  }
-
-  static void removeEntry(int index) {
-    if (index >= 0 && index < journalEntries.length) {
-      journalEntries.removeAt(index);
-    }
   }
 
   static void updateEntry(int index, String title, String content, String date) {
     if (index >= 0 && index < journalEntries.length) {
       journalEntries[index] = {
         'title': title,
-        'date': date,
         'content': content,
+        'date': date,
       };
+    }
+  }
+
+  static void removeEntry(int index) {
+    if (index >= 0 && index < journalEntries.length) {
+      journalEntries.removeAt(index);
     }
   }
 }
@@ -41,16 +43,35 @@ class Journal extends StatefulWidget {
 }
 
 class _JournalState extends State<Journal> {
+  final FirestoreService _firestoreService = FirestoreService();
+
   @override
   void dispose() {
     super.dispose();
   }
 
   // Method to delete journal entry
-  void deleteJournalEntry(int index) {
-    setState(() {
-      JournalData.removeEntry(index);
-    });
+  void deleteJournalEntry(String docID) async {
+    try {
+      await _firestoreService.deleteNote(docID);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Journal entry deleted'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting entry: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -71,6 +92,7 @@ class _JournalState extends State<Journal> {
       ),
       extendBodyBehindAppBar: true,
       floatingActionButton: FloatingActionButton(
+        heroTag: 'journal_fab',
         onPressed: () {
           Navigator.push(
             context,
@@ -127,40 +149,96 @@ class _JournalState extends State<Journal> {
                 
                 // Journal Entries List
                 Expanded(
-                  child: JournalData.journalEntries.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.book_outlined,
-                              color: Colors.grey.withOpacity(0.5),
-                              size: 100,
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              "No journal entries yet",
-                              style: TextStyle(
-                                fontSize: 20,
-                                color: Colors.grey.withOpacity(0.7),
-                                fontWeight: FontWeight.w500,
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: _firestoreService.getNotesStream(),
+                    builder: (context, snapshot) {
+                      // Loading state
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF9E4D),
+                          ),
+                        );
+                      }
+
+                      // Error state
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                color: Colors.red.withOpacity(0.5),
+                                size: 100,
                               ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              "Tap the + button to create your first entry",
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey.withOpacity(0.6),
+                              const SizedBox(height: 20),
+                              Text(
+                                "Error loading journals",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  color: Colors.grey.withOpacity(0.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // Empty state
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: JournalData.journalEntries.length,
+                            child: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.book,
+                                  color: Color(0xFFFF9E4D),
+                                  size: 80,
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  "No journal entries yet",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  "Tap the + button to create your first entry",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black54,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      // List of journal entries
+                      final notes = snapshot.data!.docs;
+                      return ListView.builder(
+                        itemCount: notes.length,
                         itemBuilder: (context, index) {
-                          final entry = JournalData.journalEntries[index];
+                          final doc = notes[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final docID = doc.id;
+                          final title = data['title'] ?? 'Untitled';
+                          final content = data['note'] ?? '';
+                          final date = data['time'] ?? '';
+
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
@@ -178,7 +256,7 @@ class _JournalState extends State<Journal> {
                             child: ListTile(
                               contentPadding: const EdgeInsets.all(16),
                               title: Text(
-                                entry['title']!,
+                                title,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 18,
@@ -190,7 +268,7 @@ class _JournalState extends State<Journal> {
                                 children: [
                                   const SizedBox(height: 8),
                                   Text(
-                                    entry['date']!,
+                                    date,
                                     style: const TextStyle(
                                       color: Color(0xFFFF9E4D),
                                       fontWeight: FontWeight.w600,
@@ -198,7 +276,7 @@ class _JournalState extends State<Journal> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    entry['content']!,
+                                    content,
                                     style: const TextStyle(
                                       color: Colors.black87,
                                     ),
@@ -232,14 +310,8 @@ class _JournalState extends State<Journal> {
                                               ),
                                               TextButton(
                                                 onPressed: () {
-                                                  deleteJournalEntry(index);
+                                                  deleteJournalEntry(docID);
                                                   Navigator.of(context).pop();
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('Journal entry deleted'),
-                                                      backgroundColor: Colors.red,
-                                                    ),
-                                                  );
                                                 },
                                                 child: const Text('Delete'),
                                               ),
@@ -262,21 +334,20 @@ class _JournalState extends State<Journal> {
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => EditJournal(
-                                      journalIndex: index,
-                                      initialTitle: entry['title']!,
-                                      initialContent: entry['content']!,
-                                      date: entry['date']!,
+                                      docID: docID,
+                                      initialTitle: title,
+                                      initialContent: content,
+                                      date: date,
                                     ),
                                   ),
-                                ).then((_) {
-                                  // Refresh the list when returning from edit
-                                  setState(() {});
-                                });
+                                );
                               },
                             ),
                           );
                         },
-                      ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/savings.dart';
+import 'package:dailynest/Savings/savings.dart';
 
 class AddSavings extends StatefulWidget {
   static const String id = "AddSavings";

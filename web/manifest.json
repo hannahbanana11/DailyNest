@@ -1,6 +1,6 @@
 {
-    "name": "dailynest",
-    "short_name": "dailynest",
+    "name": "DailyNest",
+    "short_name": "DailyNest",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

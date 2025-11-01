@@ -1,38 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/Savings/savings.dart';
+import 'package:dailynest/database/DiaryFirebase.dart';
 
-class EditSavings extends StatefulWidget {
-  static const String id = "EditSavings";
-  final int entryIndex;
-  final Map<String, dynamic> existingEntry;
+class AddSavings extends StatefulWidget {
+  static const String id = "AddSavings";
 
-  const EditSavings({
-    super.key,
-    required this.entryIndex,
-    required this.existingEntry,
-  });
+  const AddSavings({super.key});
 
   @override
-  State<EditSavings> createState() => _EditSavingsState();
+  State<AddSavings> createState() => _AddSavingsState();
 }
 
-class _EditSavingsState extends State<EditSavings> {
+class _AddSavingsState extends State<AddSavings> {
   final List<Map<String, dynamic>> _entries = [];
   double _totalBalance = 0.0;
+  final FirestoreService _firestoreService = FirestoreService();
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    // Load existing transactions
-    for (var transaction in widget.existingEntry['transactions']) {
-      _entries.add({
-        'time': transaction['time'],
-        'deposit': TextEditingController(text: transaction['deposit']),
-        'withdraw': TextEditingController(text: transaction['withdraw']),
-        'balance': transaction['balance'],
-      });
-    }
-    _totalBalance = widget.existingEntry['totalBalance'];
+    // Add initial empty row
+    _addNewRow();
   }
 
   void _addNewRow() {
@@ -134,9 +122,9 @@ class _EditSavingsState extends State<EditSavings> {
                 
                 const SizedBox(height: 8),
                 
-                // Edit Savings subtitle
+                // Savings subtitle
                 const Text(
-                  "Edit Savings",
+                  "Savings",
                   style: TextStyle(
                     color: Colors.black,
                     fontSize: 24,
@@ -146,9 +134,9 @@ class _EditSavingsState extends State<EditSavings> {
                 
                 const SizedBox(height: 20),
                 
-                // Date
+                // Current Date
                 Text(
-                  widget.existingEntry['date'],
+                  "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
                   style: const TextStyle(
                     color: Colors.black87,
                     fontSize: 18,
@@ -338,11 +326,11 @@ class _EditSavingsState extends State<EditSavings> {
                 
                 const SizedBox(height: 10),
                 
-                // Update Button
+                // Save Button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: _isSaving ? null : () async {
                       // Filter out empty entries
                       final validEntries = _entries.where((entry) {
                         final deposit = double.tryParse(entry['deposit'].text) ?? 0.0;
@@ -360,15 +348,52 @@ class _EditSavingsState extends State<EditSavings> {
                         return;
                       }
 
-                      // Update the passbook entry
-                      SavingsData.updateEntry(
-                        widget.entryIndex,
-                        widget.existingEntry['date'],
-                        validEntries,
-                        _totalBalance,
-                      );
+                      // Save the passbook entry to Firebase
+                      setState(() {
+                        _isSaving = true;
+                      });
 
-                      Navigator.pop(context);
+                      try {
+                        final now = DateTime.now();
+                        final formattedDate = "${now.day}/${now.month}/${now.year}";
+                        
+                        // Convert entries to a format suitable for Firebase
+                        final transactionsForFirebase = validEntries.map((entry) => {
+                          'time': entry['time'],
+                          'deposit': entry['deposit'].text,
+                          'withdraw': entry['withdraw'].text,
+                          'balance': entry['balance'],
+                        }).toList();
+
+                        await _firestoreService.addSavings(
+                          date: formattedDate,
+                          transactions: transactionsForFirebase,
+                          totalBalance: _totalBalance,
+                        );
+
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Passbook entry saved successfully'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() {
+                          _isSaving = false;
+                        });
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error saving passbook: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF9E4D),
@@ -378,13 +403,22 @@ class _EditSavingsState extends State<EditSavings> {
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    child: const Text(
-                      "Update Passbook",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            "Save Passbook",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 ),
               ],

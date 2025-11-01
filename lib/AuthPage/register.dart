@@ -1,27 +1,111 @@
 import 'package:flutter/material.dart';
+import 'package:dailynest/Auth/AuthService.dart';
 
-class Forgotpassword extends StatefulWidget {
-  static const String id = "Forgotpassword";
+class Register extends StatefulWidget {
+  static const String id = "Register";
 
-  const Forgotpassword({super.key});
+  const Register({super.key});
 
   @override
-  State<Forgotpassword> createState() => _ForgotpasswordState();
+  State<Register> createState() => _RegisterState();
 }
 
-class _ForgotpasswordState extends State<Forgotpassword> {
+class _RegisterState extends State<Register> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
-  final TextEditingController _verifyController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _usernameController.dispose();
     _emailController.dispose();
+    _passwordController.dispose();
     _contactController.dispose();
-    _verifyController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleCreateAccount() async {
+    // Validate inputs
+    if (_usernameController.text.trim().isEmpty) {
+      _showErrorDialog('Please enter a username');
+      return;
+    }
+
+    if (_emailController.text.trim().isEmpty) {
+      _showErrorDialog('Please enter an email');
+      return;
+    }
+
+    if (_passwordController.text.trim().isEmpty) {
+      _showErrorDialog('Please enter a password');
+      return;
+    }
+
+    if (_passwordController.text.length < 6) {
+      _showErrorDialog('Password must be at least 6 characters');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await authService.value.createAccount(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+        username: _usernameController.text.trim(),
+      );
+
+      if (mounted) {
+        // Account created successfully, navigate back or to home
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Failed to create account';
+        
+        if (e.toString().contains('email-already-in-use')) {
+          errorMessage = 'This email is already registered';
+        } else if (e.toString().contains('invalid-email')) {
+          errorMessage = 'Invalid email address';
+        } else if (e.toString().contains('weak-password')) {
+          errorMessage = 'Password is too weak';
+        }
+
+        _showErrorDialog(errorMessage);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -53,9 +137,9 @@ class _ForgotpasswordState extends State<Forgotpassword> {
                 ),
                 const SizedBox(height: 16),
 
-                // Forgot Password subtitle
+                // Create Account subtitle
                 const Text(
-                  "Forgot Password",
+                  "Create Account",
                   style: TextStyle(
                     color: Colors.black,
                     fontSize: 24,
@@ -109,15 +193,15 @@ class _ForgotpasswordState extends State<Forgotpassword> {
                 ),
                 const SizedBox(height: 16),
 
-                // Contact Number field
+                // Password field
                 SizedBox(
                   width: 280,
                   child: TextField(
-                    controller: _contactController,
-                    keyboardType: TextInputType.phone,
+                    controller: _passwordController,
+                    obscureText: true,
                     decoration: InputDecoration(
-                      hintText: "Contact Number",
-                      prefixIcon: const Icon(Icons.phone, color: Colors.black),
+                      hintText: "Password",
+                      prefixIcon: const Icon(Icons.lock, color: Colors.black),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -132,26 +216,15 @@ class _ForgotpasswordState extends State<Forgotpassword> {
                 ),
                 const SizedBox(height: 16),
 
-                // Verify field with OTP text
+                // Contact Number field
                 SizedBox(
                   width: 280,
                   child: TextField(
-                    controller: _verifyController,
-                    keyboardType: TextInputType.number,
+                    controller: _contactController,
+                    keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
-                      hintText: "Verify",
-                      prefixIcon: const Icon(Icons.verified_user, color: Colors.black),
-                      suffixIcon: const Padding(
-                        padding: EdgeInsets.all(12.0),
-                        child: Text(
-                          "OTP",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
+                      hintText: "Contact Number",
+                      prefixIcon: const Icon(Icons.phone, color: Colors.black),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -183,20 +256,27 @@ class _ForgotpasswordState extends State<Forgotpassword> {
                 ),
                 const SizedBox(height: 10),
 
-                // Send OTP button
+                // Create button
                 ElevatedButton(
-                  onPressed: () {
-                    // TODO: Implement send OTP functionality
-                  },
+                  onPressed: _isLoading ? null : _handleCreateAccount,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF9E4D),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
                   ),
-                  child: const Text("Send OTP"),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text("Create"),
                 ),
               ],
             ),

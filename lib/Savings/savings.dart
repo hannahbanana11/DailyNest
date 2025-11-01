@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/addsavings.dart';
-import 'package:dailynest/editsavings.dart';
+import 'package:dailynest/Savings/addsavings.dart';
+import 'package:dailynest/Savings/editsavings.dart';
+import 'package:dailynest/database/DiaryFirebase.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Global data class for savings entries
+// Global data class for savings entries (in-memory storage)
 class SavingsData {
   static List<Map<String, dynamic>> entries = [];
 
@@ -51,6 +53,31 @@ class Savings extends StatefulWidget {
 }
 
 class _SavingsState extends State<Savings> {
+  final FirestoreService _firestoreService = FirestoreService();
+
+  // Method to delete savings entry
+  void deleteSavingsEntry(String docID) async {
+    try {
+      await _firestoreService.deleteSavings(docID);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Passbook entry deleted'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting entry: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,8 +136,53 @@ class _SavingsState extends State<Savings> {
                 
                 // Savings entries list
                 Expanded(
-                  child: SavingsData.entries.isEmpty
-                      ? Center(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: _firestoreService.getSavingsStream(),
+                    builder: (context, snapshot) {
+                      // Loading state
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFFF9E4D),
+                          ),
+                        );
+                      }
+
+                      // Error state
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  color: Colors.red.withOpacity(0.5),
+                                  size: 80,
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  "Error loading savings",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      // Empty state
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return Center(
                           child: Container(
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
@@ -146,11 +218,21 @@ class _SavingsState extends State<Savings> {
                               ],
                             ),
                           ),
-                        )
-                      : ListView.builder(
-                          itemCount: SavingsData.entries.length,
+                        );
+                      }
+
+                      // List of savings entries
+                      final savingsDocs = snapshot.data!.docs;
+                      return ListView.builder(
+                          itemCount: savingsDocs.length,
                           itemBuilder: (context, index) {
-                            final entry = SavingsData.entries[index];
+                            final doc = savingsDocs[index];
+                            final data = doc.data() as Map<String, dynamic>;
+                            final docID = doc.id;
+                            final date = data['date'] ?? '';
+                            final transactions = List<Map<String, dynamic>>.from(data['transactions'] ?? []);
+                            final totalBalance = (data['totalBalance'] ?? 0.0).toDouble();
+
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
                               decoration: BoxDecoration(
@@ -181,7 +263,7 @@ class _SavingsState extends State<Savings> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          "Passbook - ${entry['date']}",
+                                          "Passbook - $date",
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 18,
@@ -198,13 +280,15 @@ class _SavingsState extends State<Savings> {
                                                   context,
                                                   MaterialPageRoute(
                                                     builder: (context) => EditSavings(
-                                                      entryIndex: index,
-                                                      existingEntry: entry,
+                                                      docID: docID,
+                                                      existingEntry: {
+                                                        'date': date,
+                                                        'transactions': transactions,
+                                                        'totalBalance': totalBalance,
+                                                      },
                                                     ),
                                                   ),
-                                                ).then((_) {
-                                                  setState(() {});
-                                                });
+                                                );
                                               },
                                             ),
                                             // Delete button
@@ -223,8 +307,7 @@ class _SavingsState extends State<Savings> {
                                                       ),
                                                       TextButton(
                                                         onPressed: () {
-                                                          SavingsData.removeEntry(index);
-                                                          setState(() {});
+                                                          deleteSavingsEntry(docID);
                                                           Navigator.pop(context);
                                                         },
                                                         child: const Text("Delete"),
@@ -265,15 +348,15 @@ class _SavingsState extends State<Savings> {
                                         const SizedBox(height: 8),
                                         
                                         // Transaction rows
-                                        ...entry['transactions'].map<Widget>((transaction) {
+                                        ...transactions.map<Widget>((transaction) {
                                           return Padding(
                                             padding: const EdgeInsets.symmetric(vertical: 4),
                                             child: Row(
                                               children: [
-                                                Expanded(flex: 2, child: Text(transaction['time'])),
-                                                Expanded(flex: 2, child: Text(transaction['deposit'])),
-                                                Expanded(flex: 2, child: Text(transaction['withdraw'])),
-                                                Expanded(flex: 2, child: Text(transaction['balance'].toStringAsFixed(2))),
+                                                Expanded(flex: 2, child: Text(transaction['time'] ?? '')),
+                                                Expanded(flex: 2, child: Text(transaction['deposit'] ?? '')),
+                                                Expanded(flex: 2, child: Text(transaction['withdraw'] ?? '')),
+                                                Expanded(flex: 2, child: Text((transaction['balance'] ?? 0.0).toStringAsFixed(2))),
                                               ],
                                             ),
                                           );
@@ -290,7 +373,7 @@ class _SavingsState extends State<Savings> {
                                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                             ),
                                             Text(
-                                              entry['totalBalance'].toStringAsFixed(2),
+                                              totalBalance.toStringAsFixed(2),
                                               style: const TextStyle(
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.bold,
@@ -306,7 +389,9 @@ class _SavingsState extends State<Savings> {
                               ),
                             );
                           },
-                        ),
+                        );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -314,6 +399,7 @@ class _SavingsState extends State<Savings> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'savings_fab',
         onPressed: () {
           Navigator.push(
             context,

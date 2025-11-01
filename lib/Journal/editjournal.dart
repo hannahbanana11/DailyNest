@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/journal.dart';
+import 'package:dailynest/database/DiaryFirebase.dart';
 
 class EditJournal extends StatefulWidget {
   static const String id = "EditJournal";
   
-  final int journalIndex;
+  final String docID;
   final String initialTitle;
   final String initialContent;
   final String date;
 
   const EditJournal({
     super.key,
-    required this.journalIndex,
+    required this.docID,
     required this.initialTitle,
     required this.initialContent,
     required this.date,
@@ -24,6 +24,8 @@ class EditJournal extends StatefulWidget {
 class _EditJournalState extends State<EditJournal> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
+  final FirestoreService _firestoreService = FirestoreService();
+  bool _isUpdating = false;
 
   @override
   void initState() {
@@ -172,7 +174,7 @@ class _EditJournalState extends State<EditJournal> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: _isUpdating ? null : () async {
                       // Validate input
                       if (_titleController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -194,16 +196,42 @@ class _EditJournalState extends State<EditJournal> {
                         return;
                       }
 
-                      // Update the journal entry
-                      JournalData.updateEntry(
-                        widget.journalIndex,
-                        _titleController.text.trim(),
-                        _contentController.text.trim(),
-                        widget.date,
-                      );
+                      // Update the journal entry in Firebase
+                      setState(() {
+                        _isUpdating = true;
+                      });
 
-                      // Navigate back
-                      Navigator.pop(context);
+                      try {
+                        await _firestoreService.updateNote(
+                          docID: widget.docID,
+                          newTitle: _titleController.text.trim(),
+                          newNote: _contentController.text.trim(),
+                        );
+
+                        if (mounted) {
+                          // Navigate back on success
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Journal entry updated successfully'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() {
+                          _isUpdating = false;
+                        });
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error updating journal: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF9E4D),
@@ -213,13 +241,22 @@ class _EditJournalState extends State<EditJournal> {
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    child: const Text(
-                      "Update Journal",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: _isUpdating
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            "Update Journal",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 ),
               ],

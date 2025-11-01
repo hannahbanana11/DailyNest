@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/weather_service.dart';
+import 'package:dailynest/Weather/weather_service.dart';
 
 class TenDayForecastList extends StatelessWidget {
   final List<DailyForecast> forecasts;

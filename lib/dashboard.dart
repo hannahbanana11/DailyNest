@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/app_shell.dart';
-import 'package:dailynest/login.dart';
+import 'package:dailynest/Weather/app_shell.dart';
+import 'package:dailynest/Auth/AuthService.dart';
 
 class Dashboard extends StatelessWidget {
   static const String id = "Dashboard";
@@ -152,12 +152,41 @@ class Dashboard extends StatelessWidget {
 
                       // Log out button
                       ElevatedButton(
-                        onPressed: () {
-                          Navigator.pushNamedAndRemoveUntil(
-                            context,
-                            Login.id,
-                            (route) => false,
+                        onPressed: () async {
+                          // Show confirmation dialog
+                          bool? shouldLogout = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Logout'),
+                              content: const Text('Are you sure you want to logout?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Logout'),
+                                ),
+                              ],
+                            ),
                           );
+
+                          if (shouldLogout == true && context.mounted) {
+                            try {
+                              await authService.value.signOut();
+                              // No need to navigate - the StreamBuilder in main.dart will handle it
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to logout: ${e.toString()}'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.grey,

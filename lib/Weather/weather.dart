@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
-import 'package:dailynest/weather_service.dart';
-import 'package:dailynest/weather_widgets.dart';
+import 'package:dailynest/Weather/weather_service.dart';
+import 'package:dailynest/Weather/weather_widgets.dart';
 
 class Weather extends StatefulWidget {
   static const String id = "Weather";
@@ -18,7 +18,6 @@ class _WeatherState extends State<Weather> {
   final WeatherService _weatherService = WeatherService();
 
   WeatherData? _weather;
-  List<WeatherForecastEntry> _forecast = const [];
   List<DailyForecast> _dailyForecast = const [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -55,7 +54,6 @@ class _WeatherState extends State<Weather> {
       if (!mounted) return;
       setState(() {
         _weather = data;
-        _forecast = forecast;
         _dailyForecast = _weatherService.processDailyForecast(forecast);
         _errorMessage = null;
       });
@@ -102,7 +100,6 @@ class _WeatherState extends State<Weather> {
       if (!mounted) return;
       setState(() {
         _weather = data;
-        _forecast = forecast;
         _dailyForecast = _weatherService.processDailyForecast(forecast);
         _errorMessage = null;
       });
@@ -126,7 +123,6 @@ class _WeatherState extends State<Weather> {
     }
     setState(() {
       _errorMessage = message;
-      _forecast = const [];
       _dailyForecast = const [];
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -195,29 +191,9 @@ class _WeatherState extends State<Weather> {
           ],
         ),
         const SizedBox(height: 24),
-        _buildForecastSection(),
-        const SizedBox(height: 16),
         _build10DayForecast(),
       ],
     );
-  }
-
-  Widget _buildForecastSection() {
-    if (_forecast.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final now = DateTime.now();
-    final endOfDay = DateTime(now.year, now.month, now.day, 23, 0, 0);
-    final upcoming = _forecast
-        .where((entry) => entry.time.isAfter(now) && entry.time.isBefore(endOfDay))
-        .toList(growable: false);
-
-    if (upcoming.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return _UpcomingHoursStrip(entries: upcoming);
   }
 
   Widget _build10DayForecast() {
@@ -371,118 +347,6 @@ class _WeatherMetric extends StatelessWidget {
           style: const TextStyle(fontSize: 14, color: Colors.black54),
         ),
       ],
-    );
-  }
-}
-
-class _UpcomingHoursStrip extends StatelessWidget {
-  final List<WeatherForecastEntry> entries;
-
-  const _UpcomingHoursStrip({required this.entries});
-
-  @override
-  Widget build(BuildContext context) {
-    if (entries.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final children = <Widget>[];
-    for (var i = 0; i < entries.length; i++) {
-      children.add(_WeatherForecastTile(entry: entries[i]));
-      if (i < entries.length - 1) {
-        children.add(const SizedBox(width: 12));
-      }
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Next hours',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(children: children),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WeatherForecastTile extends StatelessWidget {
-  final WeatherForecastEntry entry;
-
-  const _WeatherForecastTile({required this.entry});
-
-  @override
-  Widget build(BuildContext context) {
-    final timeLabel = TimeOfDay.fromDateTime(entry.time).format(context);
-    final tempLabel = '${entry.temperature.toStringAsFixed(0)}°C';
-
-    return Container(
-      width: 90,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            timeLabel,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          Text(
-            tempLabel,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFFFF9E4D),
-            ),
-          ),
-          Text(
-            entry.description,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
     );
   }
 }

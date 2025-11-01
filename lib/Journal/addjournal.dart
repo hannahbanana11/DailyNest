@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/journal.dart';
+import 'package:dailynest/database/DiaryFirebase.dart';
 
 class AddJournal extends StatefulWidget {
   static const String id = "AddJournal";
@@ -13,6 +13,8 @@ class AddJournal extends StatefulWidget {
 class _AddJournalState extends State<AddJournal> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
+  final FirestoreService _firestoreService = FirestoreService();
+  bool _isSaving = false;
 
   @override
   void dispose() {
@@ -154,7 +156,7 @@ class _AddJournalState extends State<AddJournal> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: _isSaving ? null : () async {
                       // Validate input
                       if (_titleController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -176,19 +178,42 @@ class _AddJournalState extends State<AddJournal> {
                         return;
                       }
 
-                      // Save the journal entry
-                      final now = DateTime.now();
-                      final formattedDate = "${now.day}/${now.month}/${now.year}";
-                      
-                      // Add to journal entries using the global JournalData
-                      JournalData.addEntry(
-                        _titleController.text.trim(),
-                        _contentController.text.trim(),
-                        formattedDate,
-                      );
+                      // Save the journal entry to Firebase
+                      setState(() {
+                        _isSaving = true;
+                      });
 
-                      // Navigate back without success message
-                      Navigator.pop(context);
+                      try {
+                        await _firestoreService.addNote(
+                          title: _titleController.text.trim(),
+                          note: _contentController.text.trim(),
+                          selectedDate: DateTime.now(),
+                        );
+
+                        if (mounted) {
+                          // Navigate back on success
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Journal entry saved successfully'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() {
+                          _isSaving = false;
+                        });
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error saving journal: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF9E4D),
@@ -198,13 +223,22 @@ class _AddJournalState extends State<AddJournal> {
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    child: const Text(
-                      "Save Journal",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            "Save Journal",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 ),
               ],

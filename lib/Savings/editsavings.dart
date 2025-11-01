@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:dailynest/Savings/savings.dart';
+import 'package:dailynest/database/DiaryFirebase.dart';
 
 class EditSavings extends StatefulWidget {
   static const String id = "EditSavings";
-  final int entryIndex;
+  final String docID;
   final Map<String, dynamic> existingEntry;
 
   const EditSavings({
     super.key,
-    required this.entryIndex,
+    required this.docID,
     required this.existingEntry,
   });
 
@@ -19,6 +19,8 @@ class EditSavings extends StatefulWidget {
 class _EditSavingsState extends State<EditSavings> {
   final List<Map<String, dynamic>> _entries = [];
   double _totalBalance = 0.0;
+  final FirestoreService _firestoreService = FirestoreService();
+  bool _isUpdating = false;
 
   @override
   void initState() {
@@ -342,7 +344,7 @@ class _EditSavingsState extends State<EditSavings> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: _isUpdating ? null : () async {
                       // Filter out empty entries
                       final validEntries = _entries.where((entry) {
                         final deposit = double.tryParse(entry['deposit'].text) ?? 0.0;
@@ -360,15 +362,50 @@ class _EditSavingsState extends State<EditSavings> {
                         return;
                       }
 
-                      // Update the passbook entry
-                      SavingsData.updateEntry(
-                        widget.entryIndex,
-                        widget.existingEntry['date'],
-                        validEntries,
-                        _totalBalance,
-                      );
+                      // Update the passbook entry in Firebase
+                      setState(() {
+                        _isUpdating = true;
+                      });
 
-                      Navigator.pop(context);
+                      try {
+                        // Convert entries to a format suitable for Firebase
+                        final transactionsForFirebase = validEntries.map((entry) => {
+                          'time': entry['time'],
+                          'deposit': entry['deposit'].text,
+                          'withdraw': entry['withdraw'].text,
+                          'balance': entry['balance'],
+                        }).toList();
+
+                        await _firestoreService.updateSavings(
+                          docID: widget.docID,
+                          date: widget.existingEntry['date'],
+                          transactions: transactionsForFirebase,
+                          totalBalance: _totalBalance,
+                        );
+
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Passbook entry updated successfully'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() {
+                          _isUpdating = false;
+                        });
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error updating passbook: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF9E4D),
@@ -378,13 +415,22 @@ class _EditSavingsState extends State<EditSavings> {
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    child: const Text(
-                      "Update Passbook",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: _isUpdating
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            "Update Passbook",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 ),
               ],
