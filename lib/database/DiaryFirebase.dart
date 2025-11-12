@@ -1,9 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 class FirestoreService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseDatabase _database = FirebaseDatabase.instanceFor(
+    app: Firebase.app(),
+    databaseURL: 'https://dailynest-35f52-default-rtdb.firebaseio.com',
+  );
 
   Future<void> addNote({
     required String title,
@@ -136,30 +142,27 @@ class FirestoreService {
       throw Exception("Please log in first");
     }
 
-    DateTime now = DateTime.now();
+    final now = DateTime.now().millisecondsSinceEpoch;
 
-    await _firestore.collection('users').doc(user.uid).collection('savings').add({
+    await _database.ref('users/${user.uid}/savings').push().set({
       'date': date,
       'transactions': transactions,
       'totalBalance': totalBalance,
-      'timestamp': Timestamp.fromDate(now),
+      'timestamp': now,
     });
   }
 
-  Stream<QuerySnapshot> getSavingsStream() {
+  Stream<DatabaseEvent> getSavingsStream() {
     final user = _auth.currentUser;
 
     if (user == null) {
-      // Return an empty stream instead of throwing an exception
       return const Stream.empty();
     }
 
-    return _firestore
-        .collection('users')
-        .doc(user.uid)
-        .collection('savings')
-        .orderBy('timestamp', descending: true)
-        .snapshots();
+    return _database
+        .ref('users/${user.uid}/savings')
+        .orderByChild('timestamp')
+        .onValue;
   }
 
   Future<void> updateSavings({
@@ -174,11 +177,8 @@ class FirestoreService {
       throw Exception("Please log in first");
     }
 
-    await _firestore
-        .collection('users')
-        .doc(user.uid)
-        .collection('savings')
-        .doc(docID)
+    await _database
+        .ref('users/${user.uid}/savings/$docID')
         .update({
           'date': date,
           'transactions': transactions,
@@ -193,11 +193,8 @@ class FirestoreService {
       throw Exception("Please log in first");
     }
 
-    await _firestore
-        .collection('users')
-        .doc(user.uid)
-        .collection('savings')
-        .doc(docID)
-        .delete();
+    await _database
+        .ref('users/${user.uid}/savings/$docID')
+        .remove();
   }
 }

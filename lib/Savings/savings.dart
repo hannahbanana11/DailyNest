@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dailynest/Savings/addsavings.dart';
 import 'package:dailynest/Savings/editsavings.dart';
 import 'package:dailynest/database/DiaryFirebase.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 // Global data class for savings entries (in-memory storage)
 class SavingsData {
@@ -136,7 +136,7 @@ class _SavingsState extends State<Savings> {
                 
                 // Savings entries list
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
+                  child: StreamBuilder<DatabaseEvent>(
                     stream: _firestoreService.getSavingsStream(),
                     builder: (context, snapshot) {
                       // Loading state
@@ -181,7 +181,7 @@ class _SavingsState extends State<Savings> {
                       }
 
                       // Empty state
-                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
                         return Center(
                           child: Container(
                             padding: const EdgeInsets.all(20),
@@ -221,17 +221,41 @@ class _SavingsState extends State<Savings> {
                         );
                       }
 
-                      // List of savings entries
-                      final savingsDocs = snapshot.data!.docs;
+                      final raw = snapshot.data!.snapshot.value;
+                      final map = raw is Map ? raw as Map : {};
+
+                      final List<Map<String, dynamic>> savingsList = map.entries.map((e) {
+                        final m = Map<String, dynamic>.from(e.value as Map);
+                        final txRaw = m['transactions'];
+                        final txList = txRaw is List
+                            ? txRaw.map((t) => Map<String, dynamic>.from(t as Map)).toList()
+                            : <Map<String, dynamic>>[];
+                        final total = m['totalBalance'];
+                        final totalDouble = total is num ? total.toDouble() : 0.0;
+                        final ts = m['timestamp'];
+                        final tsNum = ts is num ? ts : 0;
+                        return {
+                          'id': e.key,
+                          'date': m['date'] ?? '',
+                          'transactions': txList,
+                          'totalBalance': totalDouble,
+                          'timestamp': tsNum,
+                        };
+                      }).toList();
+
+                      savingsList.sort((a, b) => (b['timestamp'] as num).compareTo(a['timestamp'] as num));
+
                       return ListView.builder(
-                          itemCount: savingsDocs.length,
+                          itemCount: savingsList.length,
                           itemBuilder: (context, index) {
-                            final doc = savingsDocs[index];
-                            final data = doc.data() as Map<String, dynamic>;
-                            final docID = doc.id;
-                            final date = data['date'] ?? '';
-                            final transactions = List<Map<String, dynamic>>.from(data['transactions'] ?? []);
-                            final totalBalance = (data['totalBalance'] ?? 0.0).toDouble();
+                            final item = savingsList[index];
+                            final docID = item['id'] as String;
+                            final date = item['date'] as String;
+                            final transactions = List<Map<String, dynamic>>.from(item['transactions'] as List);
+                            final totalRaw = item['totalBalance'];
+                            final totalBalance = totalRaw is num
+                                ? totalRaw.toDouble()
+                                : double.tryParse(totalRaw?.toString() ?? '0') ?? 0.0;
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 16),
@@ -356,7 +380,14 @@ class _SavingsState extends State<Savings> {
                                                 Expanded(flex: 2, child: Text(transaction['time'] ?? '')),
                                                 Expanded(flex: 2, child: Text(transaction['deposit'] ?? '')),
                                                 Expanded(flex: 2, child: Text(transaction['withdraw'] ?? '')),
-                                                Expanded(flex: 2, child: Text((transaction['balance'] ?? 0.0).toStringAsFixed(2))),
+                                                Expanded(
+                                                  flex: 2,
+                                                  child: Text((() {
+                                                    final b = transaction['balance'];
+                                                    final numBal = b is num ? b.toDouble() : double.tryParse(b?.toString() ?? '0') ?? 0.0;
+                                                    return numBal.toStringAsFixed(2);
+                                                  })()),
+                                                ),
                                               ],
                                             ),
                                           );
